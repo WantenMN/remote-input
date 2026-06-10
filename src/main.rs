@@ -124,14 +124,9 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     info!("WebSocket connection closed");
 }
 
-/// Write text to system clipboard.
-///
-/// Wayland: a single `wl-copy --foreground` process is spawned once and kept
-/// alive — it holds selection ownership for the lifetime of the program.
-/// Each new write kills the old process, spawns a fresh one, and waits briefly
-/// for the compositor to settle before returning.
-///
-/// X11: `xclip` is spawned per write (clipboard persists after exit).
+// ── Platform-specific clipboard & paste ──────────────────────
+
+#[cfg(unix)]
 fn clipboard_set(text: &str, prev: &mut Option<std::process::Child>) -> Result<(), String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -188,8 +183,7 @@ fn clipboard_set(text: &str, prev: &mut Option<std::process::Child>) -> Result<(
     Ok(())
 }
 
-/// Simulate Ctrl+Shift+V via xdotool.
-/// Ctrl+Shift+V works as paste in both terminals and most GUI apps on Linux.
+#[cfg(unix)]
 fn paste_keystroke() -> Result<(), String> {
     use std::process::Command;
     let status = Command::new("xdotool")
@@ -203,7 +197,49 @@ fn paste_keystroke() -> Result<(), String> {
     }
 }
 
-/// Paste worker: clipboard write → sleep → simulate Ctrl+Shift+V.
+#[cfg(windows)]
+fn clipboard_set(text: &str, _prev: &mut Option<std::process::Child>) -> Result<(), String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("powershell")
+        .args(["-NoProfile", "-Command", "$input | Set-Clipboard"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn powershell: {e}"))?;
+
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(text.as_bytes())
+        .map_err(|e| format!("Failed to write to powershell stdin: {e}"))?;
+
+    let _ = child.wait();
+    Ok(())
+}
+
+#[cfg(windows)]
+fn paste_keystroke() -> Result<(), String> {
+    use std::process::Command;
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-Command",
+            "Add-Type -AssemblyName System.Windows.Forms; \
+             [System.Windows.Forms.SendKeys]::SendWait('^v')"])
+        .status()
+        .map_err(|e| format!("Failed to run powershell: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("powershell exited with {status}"))
+    }
+}
+
+/// Paste worker: clipboard write → sleep → simulate paste keystroke.
+/// Unix: Ctrl+Shift+V (works in terminals and most GUI apps).
+/// Windows: Ctrl+V.
 fn paste_worker(mut rx: mpsc::UnboundedReceiver<String>, delay: Duration) {
     let mut clipboard_child: Option<std::process::Child> = None;
 
