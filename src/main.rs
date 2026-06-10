@@ -10,6 +10,38 @@ use clap::Parser;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
+/// Detect the machine's LAN IP address, skipping TUN/VPN interfaces.
+fn detect_lan_ip() -> IpAddr {
+    // Interface name substrings that indicate TUN/VPN/tunnel adapters.
+    const TUN_KEYWORDS: &[&str] = &[
+        "tun", "tap", "wireguard", "tailscale", "vpn", "tunnel", "loopback",
+    ];
+
+    if let Ok(ifaces) = local_ip_address::list_afinet_netifas() {
+        for (_name, ip) in &ifaces {
+            // Only consider IPv4 addresses.
+            let IpAddr::V4(v4) = *ip else { continue };
+            // Skip loopback (127.x.x.x).
+            if v4.is_loopback() { continue }
+            // Skip link-local (169.254.x.x).
+            if v4.is_link_local() { continue }
+            // Skip well-known TUN/VPN ranges: 100.64.0.0/10 (CGNAT, used by
+            // Tailscale), 172.16.0.0/12 (common VPN default), and 10.0.0.0/8.
+            // We still want these if there's nothing else, so only skip them
+            // when the *name* also matches a tunnel keyword.
+            let name_lower = _name.to_lowercase();
+            if TUN_KEYWORDS.iter().any(|kw| name_lower.contains(kw)) {
+                continue;
+            }
+            return IpAddr::V4(v4);
+        }
+    }
+
+    // Fallback: use the crate's default detection (connects a UDP socket to
+    // 8.8.8.8 to find the outbound IP).
+    local_ip_address::local_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
+}
+
 /// Remote Input Daemon - type on your phone, paste into your Linux desktop
 #[derive(Parser, Debug)]
 #[command(name = "remote-input", version, about)]
@@ -44,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
     let port = args.port;
     let paste_delay = Duration::from_millis(args.paste_delay);
 
-    let local_ip = local_ip_address::local_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let local_ip = detect_lan_ip();
 
     let url = format!("http://{}:{}", local_ip, port);
     let w = 38; // inner width of the box
