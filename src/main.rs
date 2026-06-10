@@ -109,6 +109,10 @@ struct Args {
     /// Maximum number of distinct client IPs allowed at once
     #[arg(short = 'm', long, default_value_t = 1)]
     max_connections: usize,
+
+    /// Only allow connections from these IPs (comma-separated, e.g. -a 192.168.1.5,192.168.1.10)
+    #[arg(short = 'a', long = "allow", value_name = "IP", value_delimiter = ',')]
+    allow: Vec<IpAddr>,
 }
 
 /// Tracks which client IPs are currently connected.
@@ -120,6 +124,7 @@ struct AppState {
     paste_tx: mpsc::UnboundedSender<String>,
     connected: ConnectedIps,
     max_connections: usize,
+    allow: Vec<IpAddr>,
 }
 
 const INDEX_HTML: &str = include_str!("index.html");
@@ -138,6 +143,7 @@ async fn main() -> anyhow::Result<()> {
     let paste_delay = Duration::from_millis(args.paste_delay);
     let use_http = args.http;
     let max_connections = args.max_connections;
+    let allow = args.allow;
 
     let local_ip = detect_lan_ip();
 
@@ -185,7 +191,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(serve_index))
         .route("/ws", get(ws_handler))
-        .with_state(AppState { paste_tx, connected, max_connections });
+        .with_state(AppState { paste_tx, connected, max_connections, allow });
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
@@ -213,20 +219,62 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn reject_page(body: String) -> axum::response::Response {
+    let html = format!(
+        "<!DOCTYPE html>\
+         <html>\
+         <head>\
+         <meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+         <title>Remote Input - Rejected</title>\
+         <style>\
+           body {{ font-family: -apple-system, sans-serif; padding: 2em; max-width: 600px; margin: auto; color: #333; }}\
+           h2 {{ color: #c00; }}\
+           pre {{ background: #f4f4f4; padding: 0.8em; border-radius: 4px; overflow-x: auto; font-size: 0.95em; }}\
+         </style>\
+         </head>\
+         <body>{}</body>\
+         </html>",
+        body,
+    );
+    (axum::http::StatusCode::FORBIDDEN, Html(html)).into_response()
+}
+
 async fn serve_index(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> axum::response::Response {
     let ip = addr.ip();
+
+    // Whitelist check.
+    if !state.allow.is_empty() && !state.allow.contains(&ip) {
+        warn!("Rejected page request from {ip}: not in whitelist");
+        let body = format!(
+            "<h2>Access Denied</h2>\
+             <p>Your IP (<b>{ip}</b>) is not in the whitelist.</p>\
+             <p>To allow it, restart with:</p>\
+             <pre>remote-input -a {ip}</pre>\
+             <p>For multiple IPs:</p>\
+             <pre>remote-input -a {ip},&lt;other-ip&gt;</pre>",
+        );
+        return reject_page(body);
+    }
+
+    // Capacity check.
     {
         let conns = state.connected.lock().unwrap();
         if !conns.contains_key(&ip) && conns.len() >= state.max_connections {
             warn!("Rejected page request from {ip}: limit reached");
-            let msg = format!(
-                "Server is at capacity ({}/{}). To allow more connections, restart with:\n\n    remote-input -m <number>\n\nFor example:\n\n    remote-input -m 3\n",
+            let body = format!(
+                "<h2>Server Full</h2>\
+                 <p>At capacity ({}/{} connections).</p>\
+                 <p>To allow more, restart with:</p>\
+                 <pre>remote-input -m &lt;number&gt;</pre>\
+                 <p>For example:</p>\
+                 <pre>remote-input -m 3</pre>",
                 conns.len(), state.max_connections,
             );
-            return (axum::http::StatusCode::FORBIDDEN, msg).into_response();
+            return reject_page(body);
         }
     }
     Html(INDEX_HTML).into_response()
@@ -239,7 +287,21 @@ async fn ws_handler(
 ) -> axum::response::Response {
     let ip = addr.ip();
 
-    // Check connection limit before upgrading.
+    // Whitelist check.
+    if !state.allow.is_empty() && !state.allow.contains(&ip) {
+        warn!("Rejected WebSocket from {ip}: not in whitelist");
+        return ws.on_upgrade(move |mut socket| async move {
+            let reason = format!("your IP ({ip}) is not in the whitelist");
+            let _ = socket
+                .send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                    code: 1013,
+                    reason: reason.into(),
+                })))
+                .await;
+        });
+    }
+
+    // Capacity check before upgrading.
     {
         let mut conns = state.connected.lock().unwrap();
         if !conns.contains_key(&ip) && conns.len() >= state.max_connections {
