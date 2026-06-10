@@ -5,16 +5,16 @@ edition = "2024"
 description = "A lightweight daemon that lets you type on your phone and paste into your Linux desktop"
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "signal", "macros"] }
-axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "net", "sync", "signal", "macros"] }
+axum = { version = "0.8", default-features = false, features = ["ws", "http1"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-clap = { version = "4", features = ["derive"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "ansi"] }
+clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 anyhow = "1"
 local-ip-address = "0.6"
 rcgen = "0.14.8"
-axum-server = { version = "0.8.0", features = ["tls-rustls"] }
+axum-server = { version = "0.8.0", default-features = false, features = ["tls-rustls"] }
 qr2term = "0.3.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-evdev = "0.13"
+evdev = { version = "0.13", default-features = false }
