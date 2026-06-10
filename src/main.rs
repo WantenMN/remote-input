@@ -1,17 +1,20 @@
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
-use axum::response::Html;
+use axum::response::{Html, IntoResponse};
 use axum::routing::get;
 use axum::Router;
 use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
 use rcgen::{CertificateParams, KeyPair, SanType};
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Detect the machine's LAN IP address, skipping TUN/VPN interfaces.
 fn detect_lan_ip() -> IpAddr {
@@ -102,12 +105,21 @@ struct Args {
     /// Use HTTP instead of HTTPS (insecure, not recommended)
     #[arg(long, default_value_t = false)]
     http: bool,
+
+    /// Maximum number of distinct client IPs allowed at once
+    #[arg(short = 'm', long, default_value_t = 1)]
+    max_connections: usize,
 }
+
+/// Tracks which client IPs are currently connected.
+type ConnectedIps = Arc<Mutex<HashMap<IpAddr, ()>>>;
 
 /// Shared application state
 #[derive(Clone)]
 struct AppState {
     paste_tx: mpsc::UnboundedSender<String>,
+    connected: ConnectedIps,
+    max_connections: usize,
 }
 
 const INDEX_HTML: &str = include_str!("index.html");
@@ -125,10 +137,12 @@ async fn main() -> anyhow::Result<()> {
     let port = args.port;
     let paste_delay = Duration::from_millis(args.paste_delay);
     let use_http = args.http;
+    let max_connections = args.max_connections;
 
     let local_ip = detect_lan_ip();
 
     let (paste_tx, paste_rx) = mpsc::unbounded_channel::<String>();
+    let connected: ConnectedIps = Arc::new(Mutex::new(HashMap::new()));
 
     std::thread::spawn(move || {
         paste_worker(paste_rx, paste_delay);
@@ -171,13 +185,13 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(serve_index))
         .route("/ws", get(ws_handler))
-        .with_state(AppState { paste_tx });
+        .with_state(AppState { paste_tx, connected, max_connections });
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     if use_http {
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, app)
+        axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
             .with_graceful_shutdown(shutdown_signal())
             .await?;
     } else {
@@ -190,7 +204,7 @@ async fn main() -> anyhow::Result<()> {
         });
         axum_server::bind_rustls(addr, tls_config)
             .handle(handle)
-            .serve(app.into_make_service())
+            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
             .await?;
     }
 
@@ -199,17 +213,55 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn serve_index() -> Html<&'static str> {
-    Html(INDEX_HTML)
+async fn serve_index(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> axum::response::Response {
+    let ip = addr.ip();
+    {
+        let conns = state.connected.lock().unwrap();
+        if !conns.contains_key(&ip) && conns.len() >= state.max_connections {
+            warn!("Rejected page request from {ip}: limit reached");
+            let msg = format!(
+                "Server is at capacity ({}/{}). To allow more connections, restart with:\n\n    remote-input -m <number>\n\nFor example:\n\n    remote-input -m 3\n",
+                conns.len(), state.max_connections,
+            );
+            return (axum::http::StatusCode::FORBIDDEN, msg).into_response();
+        }
+    }
+    Html(INDEX_HTML).into_response()
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> axum::response::Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> axum::response::Response {
+    let ip = addr.ip();
+
+    // Check connection limit before upgrading.
+    {
+        let mut conns = state.connected.lock().unwrap();
+        if !conns.contains_key(&ip) && conns.len() >= state.max_connections {
+            warn!("Rejected connection from {ip}: limit reached ({}/{})", conns.len(), state.max_connections);
+            // Still upgrade so the client gets a proper close frame with reason.
+            return ws.on_upgrade(move |mut socket| async move {
+                let _ = socket
+                    .send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                        code: 1013, // Try Again Later
+                        reason: "server is at capacity".into(),
+                    })))
+                    .await;
+            });
+        }
+        conns.insert(ip, ());
+    }
+
+    info!("Client connected from {ip}");
+    ws.on_upgrade(move |socket| handle_socket(socket, state, ip))
 }
 
-async fn handle_socket(mut socket: WebSocket, state: AppState) {
-    info!("Client connected");
-
+async fn handle_socket(mut socket: WebSocket, state: AppState, ip: IpAddr) {
     while let Some(Ok(msg)) = socket.recv().await {
         match msg {
             Message::Text(text) => {
@@ -217,10 +269,10 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                 if trimmed.is_empty() {
                     continue;
                 }
-                info!("Received {} chars, pasting...", trimmed.len());
+                info!("Received {} chars from {ip}, pasting...", trimmed.chars().count());
 
                 if let Err(e) = state.paste_tx.send(trimmed.to_string()) {
-                    error!("Failed to send to paste worker: {}", e);
+                    error!("Failed to send to paste worker: {e}");
                     break;
                 }
 
@@ -230,14 +282,17 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                 }
             }
             Message::Close(_) => {
-                info!("Client disconnected");
                 break;
             }
             _ => {}
         }
     }
 
-    info!("WebSocket connection closed");
+    // Remove IP from connected set on disconnect.
+    if let Ok(mut conns) = state.connected.lock() {
+        conns.remove(&ip);
+    }
+    info!("Client {ip} disconnected");
 }
 
 // ── Platform-specific clipboard & paste ──────────────────────
