@@ -2,6 +2,10 @@
 
 Type on your phone, paste into your desktop. Enter text in the browser, and it gets automatically clipboard-pasted at your cursor position.
 
+## Video Demo
+
+https://github.com/user-attachments/assets/9e456be1-a5b8-4f68-a333-32cf04969f96
+
 ## Dependencies
 
 ### Linux
