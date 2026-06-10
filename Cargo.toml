@@ -1,0 +1,14 @@
+[package]
+name = "remote-input"
+version = "0.1.0"
+edition = "2024"
+description = "A lightweight daemon that lets you type on your phone and paste into your Linux desktop"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "signal", "macros"] }
+axum = { version = "0.8", features = ["ws"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+local-ip-address = "0.6"
