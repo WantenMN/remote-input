@@ -347,7 +347,7 @@
 
 <div id="historyOverlay" class="history-overlay">
   <div class="history-header">
-    <h2>History</h2>
+    <h2>History <span id="historyCount" style="color:#888;font-weight:400;font-size:16px"></span></h2>
     <label class="history-toggle">
       <input type="checkbox" id="historyRecordToggle">
       <span class="history-toggle-track"></span>
@@ -378,6 +378,7 @@
   var toastEl   = document.getElementById('toast');
   var historyOverlay = document.getElementById('historyOverlay');
   var historyList = document.getElementById('historyList');
+  var historyCount = document.getElementById('historyCount');
   var historyBackBtn = document.getElementById('historyBackBtn');
   var historyClearAllBtn = document.getElementById('historyClearAllBtn');
   var historyRecordToggle = document.getElementById('historyRecordToggle');
@@ -499,6 +500,7 @@
       return b.ts - a.ts;
     });
 
+    historyCount.textContent = items.length > 0 ? '(' + items.length + ')' : '';
     historyList.innerHTML = '';
     if (items.length === 0) {
       var empty = document.createElement('div');
