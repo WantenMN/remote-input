@@ -83,3 +83,7 @@ remote-input -a 192.168.1.5,192.168.1.10
 ```
 
 HTTPS is the default mode. Use `--http` only on trusted networks.
+
+## Links
+
+- [Linux.do](https://linux.do)
