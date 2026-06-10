@@ -10,12 +10,21 @@ https://github.com/user-attachments/assets/9e456be1-a5b8-4f68-a333-32cf04969f96
 
 ### Linux
 
+Clipboard utilities (paste simulation uses `/dev/uinput` directly, no extra packages needed):
+
 ```bash
 # Arch
-sudo pacman -S wl-clipboard xdotool
+sudo pacman -S wl-clipboard
 
 # Ubuntu / Debian
-sudo apt install wl-clipboard xdotool
+sudo apt install wl-clipboard
+```
+
+Your user must be in the `input` group to access `/dev/uinput`:
+
+```bash
+sudo usermod -aG input $USER
+# Log out and back in for the change to take effect
 ```
 
 ### Windows
@@ -55,7 +64,7 @@ The terminal will print the URL and a QR code for your phone to scan. HTTPS is e
 
 When you hit "Send", the text is written to the system clipboard, then a paste keystroke is simulated at the focused cursor position:
 
-- **Linux**: `xdotool key ctrl+shift+v` — simulates **Ctrl+Shift+V**, which works in terminals and most GUI applications. Clipboard is set via `wl-copy` (Wayland) or `xclip` (X11).
+- **Linux**: Direct `/dev/uinput` injection — simulates **Ctrl+Shift+V**, which works in terminals and most GUI applications. Clipboard is set via `wl-copy` (Wayland) or `xclip` (X11). Requires the user to be in the `input` group.
 - **Windows**: `[System.Windows.Forms.SendKeys]::SendWait('^v')` — simulates **Ctrl+V**. Clipboard is set via PowerShell's `Set-Clipboard`.
 
 The `--paste-delay` flag (default 20ms) controls the delay between the clipboard write and the keystroke, giving the system time to register the new clipboard contents. Increase it if text arrives empty or garbled.

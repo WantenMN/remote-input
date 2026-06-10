@@ -129,6 +129,138 @@ struct AppState {
 
 const INDEX_HTML: &str = include_str!("index.html");
 
+// ── Linux uinput helpers ──────────────────────────────────────
+
+#[cfg(target_os = "linux")]
+mod uinput {
+    use evdev::{AttributeSet, InputEvent, KeyCode};
+    use std::time::Duration;
+
+    /// Simulate Ctrl+Shift+V via /dev/uinput (evdev crate).
+    pub fn paste_keystroke() -> Result<(), String> {
+        let mut keys = AttributeSet::<KeyCode>::new();
+        keys.insert(KeyCode::KEY_LEFTCTRL);
+        keys.insert(KeyCode::KEY_LEFTSHIFT);
+        keys.insert(KeyCode::KEY_V);
+
+        let mut dev = evdev::uinput::VirtualDevice::builder()
+            .map_err(|e| format!("Cannot open /dev/uinput: {e}. Are you in the 'input' group?"))?
+            .name("remote-input virtual keyboard")
+            .with_keys(&keys)
+            .map_err(|e| format!("Failed to set key capabilities: {e}"))?
+            .build()
+            .map_err(|e| format!("Cannot create uinput device: {e}. Are you in the 'input' group?"))?;
+
+        // Give the kernel a moment to register the device.
+        std::thread::sleep(Duration::from_millis(100));
+
+        let events: Vec<InputEvent> = [
+            (KeyCode::KEY_LEFTCTRL, 1),
+            (KeyCode::KEY_LEFTSHIFT, 1),
+            (KeyCode::KEY_V, 1),
+            (KeyCode::KEY_V, 0),
+            (KeyCode::KEY_LEFTSHIFT, 0),
+            (KeyCode::KEY_LEFTCTRL, 0),
+        ]
+        .map(|(code, value)| InputEvent::new(evdev::EventType::KEY.0, code.0, value))
+        .to_vec();
+
+        dev.emit(&events)
+            .map_err(|e| format!("Failed to emit key events: {e}"))?;
+
+        // Wait briefly for the input system to process the events.
+        std::thread::sleep(Duration::from_millis(10));
+
+        // VirtualDevice is dropped here, destroying the uinput device.
+        Ok(())
+    }
+}
+
+// ── Linux input group check ───────────────────────────────────
+
+#[cfg(target_os = "linux")]
+fn check_input_group() -> Result<(), String> {
+    // Read /proc/self/status to get supplementary groups.
+    let status = std::fs::read_to_string("/proc/self/status")
+        .map_err(|e| format!("Cannot read /proc/self/status: {e}"))?;
+
+    let groups_line = status
+        .lines()
+        .find(|l| l.starts_with("Groups:"))
+        .ok_or("Cannot find Groups in /proc/self/status")?;
+
+    let sup_gids: Vec<u32> = groups_line
+        .split_once(':')
+        .map(|(_, v)| v)
+        .unwrap_or("")
+        .split_whitespace()
+        .filter_map(|g| g.parse().ok())
+        .collect();
+
+    // Read /etc/group to find the input group's GID.
+    let group_file = std::fs::read_to_string("/etc/group")
+        .map_err(|e| format!("Cannot read /etc/group: {e}"))?;
+
+    let input_gid: Option<u32> = group_file
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split(':');
+            let name = parts.next()?;
+            if name == "input" {
+                parts.nth(1)?.parse().ok()
+            } else {
+                None
+            }
+        })
+        .next();
+
+    let input_gid = match input_gid {
+        Some(g) => g,
+        None => return Ok(()), // No 'input' group → not using uinput.
+    };
+
+    // Check supplementary groups.
+    if sup_gids.contains(&input_gid) {
+        return Ok(());
+    }
+
+    // Also check the primary group from /etc/passwd.
+    let primary_gid = get_primary_gid();
+    if primary_gid == Some(input_gid) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "You are not in the 'input' group (GID {input_gid}).\n\
+         Run: sudo usermod -aG input $USER\n\
+         Then log out and back in for the change to take effect."
+    ))
+}
+
+/// Get the current user's primary GID from /etc/passwd.
+#[cfg(target_os = "linux")]
+fn get_primary_gid() -> Option<u32> {
+    // Get UID from /proc/self/status (no libc needed).
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let uid: u32 = status
+        .lines()
+        .find(|l| l.starts_with("Uid:"))
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|s| s.parse().ok())?;
+
+    let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
+    for line in passwd.lines() {
+        let mut parts = line.split(':');
+        parts.next()?; // name
+        parts.next()?; // password
+        let uid_str = parts.next()?;
+        if uid_str.parse::<u32>().ok() == Some(uid) {
+            return parts.next()?.parse().ok(); // GID
+        }
+    }
+    None
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -144,6 +276,14 @@ async fn main() -> anyhow::Result<()> {
     let use_http = args.http;
     let max_connections = args.max_connections;
     let allow = args.allow;
+
+    // On Linux, verify the user is in the 'input' group before starting.
+    #[cfg(target_os = "linux")]
+    if let Err(e) = check_input_group() {
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr(), "\n  \x1b[1m\x1b[31mError:\x1b[0m {e}\n");
+        std::process::exit(1);
+    }
 
     let local_ip = detect_lan_ip();
 
@@ -426,8 +566,14 @@ fn clipboard_set(text: &str, prev: &mut Option<std::process::Child>) -> Result<(
     Ok(())
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn paste_keystroke() -> Result<(), String> {
+    uinput::paste_keystroke()
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn paste_keystroke() -> Result<(), String> {
+    // Fallback for non-Linux Unix (e.g. macOS) — still use xdotool if available.
     use std::process::Command;
     let status = Command::new("xdotool")
         .args(["key", "ctrl+shift+v"])
