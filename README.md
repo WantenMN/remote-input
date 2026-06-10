@@ -47,6 +47,15 @@ The terminal will print the URL and a QR code for your phone to scan. HTTPS is e
 - Connection limit (default: 1 IP at a time)
 - IP whitelist mode (`-a`)
 
+## How Text Insertion Works
+
+When you hit "Send", the text is written to the system clipboard, then a paste keystroke is simulated at the focused cursor position:
+
+- **Linux**: `xdotool key ctrl+shift+v` — simulates **Ctrl+Shift+V**, which works in terminals and most GUI applications. Clipboard is set via `wl-copy` (Wayland) or `xclip` (X11).
+- **Windows**: `[System.Windows.Forms.SendKeys]::SendWait('^v')` — simulates **Ctrl+V**. Clipboard is set via PowerShell's `Set-Clipboard`.
+
+The `--paste-delay` flag (default 20ms) controls the delay between the clipboard write and the keystroke, giving the system time to register the new clipboard contents. Increase it if text arrives empty or garbled.
+
 ## Network
 
 Phone and desktop must be on the same LAN. Open the port in your firewall:
