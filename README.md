@@ -4,7 +4,7 @@ Type on your phone, paste into your desktop. Enter text in the browser, and it g
 
 ## Video Demo
 
-https://github.com/user-attachments/assets/9e456be1-a5b8-4f68-a333-32cf04969f96
+https://github.com/user-attachments/assets/267f14ea-7e5d-47e6-b0d3-1d0224213477
 
 ## Dependencies
 
