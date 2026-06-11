@@ -6,10 +6,11 @@ use std::time::Duration;
 
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::State;
-use axum::response::{Html, IntoResponse};
+use axum::extract::{Path as AxumPath, State};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use rust_embed::Embed;
 use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
 use rcgen::{CertificateParams, KeyPair, SanType};
@@ -127,7 +128,9 @@ struct AppState {
     allow: Vec<IpAddr>,
 }
 
-const INDEX_HTML: &str = include_str!("index.html");
+#[derive(Embed)]
+#[folder = "web-dist/"]
+struct Frontend;
 
 // ── Linux uinput helpers ──────────────────────────────────────
 
@@ -340,6 +343,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/", get(serve_index))
+        .route("/assets/{*path}", get(serve_asset))
         .route("/ws", get(ws_handler))
         .with_state(AppState { paste_tx, connected, max_connections, allow });
 
@@ -390,15 +394,11 @@ fn reject_page(body: String) -> axum::response::Response {
     (axum::http::StatusCode::FORBIDDEN, Html(html)).into_response()
 }
 
-async fn serve_index(
-    State(state): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> axum::response::Response {
-    let ip = addr.ip();
-
+/// Check whitelist and capacity. Returns `Some(rejection_page)` if denied.
+fn check_access(state: &AppState, ip: IpAddr) -> Option<axum::response::Response> {
     // Whitelist check.
     if !state.allow.is_empty() && !state.allow.contains(&ip) {
-        warn!("Rejected page request from {ip}: not in whitelist");
+        warn!("Rejected request from {ip}: not in whitelist");
         let body = format!(
             "<h2>Access Denied</h2>\
              <p>Your IP (<b>{ip}</b>) is not in the whitelist.</p>\
@@ -407,14 +407,14 @@ async fn serve_index(
              <p>For multiple IPs:</p>\
              <pre>remote-input -a {ip},&lt;other-ip&gt;</pre>",
         );
-        return reject_page(body);
+        return Some(reject_page(body));
     }
 
     // Capacity check.
     {
         let conns = state.connected.lock().unwrap();
         if !conns.contains_key(&ip) && conns.len() >= state.max_connections {
-            warn!("Rejected page request from {ip}: limit reached");
+            warn!("Rejected request from {ip}: limit reached");
             let body = format!(
                 "<h2>Server Full</h2>\
                  <p>At capacity ({}/{} connections).</p>\
@@ -424,10 +424,50 @@ async fn serve_index(
                  <pre>remote-input -m 3</pre>",
                 conns.len(), state.max_connections,
             );
-            return reject_page(body);
+            return Some(reject_page(body));
         }
     }
-    Html(INDEX_HTML).into_response()
+
+    None
+}
+
+async fn serve_index(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> axum::response::Response {
+    if let Some(rejection) = check_access(&state, addr.ip()) {
+        return rejection;
+    }
+    serve_embedded("index.html")
+}
+
+async fn serve_asset(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    AxumPath(path): AxumPath<String>,
+) -> Response {
+    if let Some(rejection) = check_access(&state, addr.ip()) {
+        return rejection;
+    }
+    // The wildcard captures everything after /assets/, so the file key
+    // in the embedded directory is "assets/<path>".
+    serve_embedded(&format!("assets/{path}"))
+}
+
+fn serve_embedded(path: &str) -> Response {
+    match Frontend::get(path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(path)
+                .first_or_octet_stream()
+                .to_string();
+            (
+                [(axum::http::header::CONTENT_TYPE, mime)],
+                content.data.to_vec(),
+            )
+                .into_response()
+        }
+        None => (axum::http::StatusCode::NOT_FOUND, "Not Found").into_response(),
+    }
 }
 
 async fn ws_handler(

@@ -15,6 +15,8 @@ local-ip-address = "0.6"
 rcgen = "0.14.8"
 axum-server = { version = "0.8.0", default-features = false, features = ["tls-rustls"] }
 qr2term = "0.3.3"
+rust-embed = { version = "8", default-features = false }
+mime_guess = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 evdev = { version = "0.13", default-features = false }
