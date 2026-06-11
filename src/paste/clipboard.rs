@@ -1,9 +1,8 @@
-use std::time::Duration;
-
 #[cfg(unix)]
 pub fn set(text: &str, prev: &mut Option<std::process::Child>) -> Result<(), String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
+    use std::time::Duration;
 
     let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
 
