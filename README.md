@@ -33,6 +33,8 @@ No extra dependencies needed. Uses PowerShell's `Set-Clipboard` and `SendKeys`.
 
 ## Build & Run
 
+Prerequisites: [Rust](https://rustup.rs/) toolchain and [pnpm](https://pnpm.io/) (for the web frontend build).
+
 ```bash
 cargo build --release
 ./target/release/remote-input
