@@ -2,7 +2,18 @@ use std::path::Path;
 use std::time::SystemTime;
 
 fn run(cmd: &str, args: &[&str], dir: &str) {
-    match std::process::Command::new(cmd).args(args).current_dir(dir).status() {
+    let mut command = if cfg!(target_os = "windows") {
+        // On Windows, resolve .cmd/.ps1 shims (e.g. from nvm4w) via cmd.exe.
+        let mut c = std::process::Command::new("cmd");
+        c.arg("/c").arg(cmd);
+        c.args(args);
+        c
+    } else {
+        let mut c = std::process::Command::new(cmd);
+        c.args(args);
+        c
+    };
+    match command.current_dir(dir).status() {
         Ok(s) if s.success() => {}
         Ok(s) => panic!("{cmd} exited with {s}"),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
