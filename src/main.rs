@@ -1,12 +1,3 @@
-mod cli;
-mod net;
-mod paste;
-mod server;
-mod startup;
-mod state;
-mod tls;
-mod ws;
-
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -14,8 +5,8 @@ use clap::Parser;
 use tokio::sync::mpsc;
 use tracing::info;
 
-use cli::Args;
-use state::{AppState, ConnectedIps};
+use remote_input::cli::Args;
+use remote_input::state::{AppState, ConnectedIps};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -29,21 +20,20 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let paste_delay = Duration::from_millis(args.paste_delay);
 
-    // On Linux, verify the user is in the 'input' group before starting.
     #[cfg(target_os = "linux")]
-    if let Err(e) = paste::linux_check::check_input_group() {
+    if let Err(e) = remote_input::paste::linux_check::check_input_group() {
         use std::io::Write;
         let _ = writeln!(std::io::stderr(), "\n  \x1b[1m\x1b[31mError:\x1b[0m {e}\n");
         std::process::exit(1);
     }
 
-    let local_ip = net::detect_lan_ip();
+    let local_ip = remote_input::net::detect_lan_ip();
     let (paste_tx, paste_rx) = mpsc::unbounded_channel::<String>();
     let connected: ConnectedIps = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
 
-    std::thread::spawn(move || paste::run(paste_rx, paste_delay));
+    std::thread::spawn(move || remote_input::paste::run(paste_rx, paste_delay));
 
-    startup::print(local_ip, args.port, args.http);
+    remote_input::startup::print(local_ip, args.port, args.http);
 
     let state = AppState {
         paste_tx,
@@ -51,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         max_connections: args.max_connections,
         allow: args.allow,
     };
-    let app = server::build_router(state);
+    let app = remote_input::server::build_router(state);
     let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
 
     if args.http {
@@ -60,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
             .with_graceful_shutdown(shutdown_signal())
             .await?;
     } else {
-        let tls_config = tls::ensure_cert(local_ip).await?;
+        let tls_config = remote_input::tls::ensure_cert(local_ip).await?;
         let handle = axum_server::Handle::new();
         let shutdown_handle = handle.clone();
         tokio::spawn(async move {
