@@ -29,7 +29,7 @@ sudo usermod -aG input $USER
 
 ### Windows
 
-No extra dependencies needed. Uses PowerShell's `Set-Clipboard` and `SendKeys`.
+No extra dependencies needed. Uses the native Windows Unicode clipboard API and PowerShell `SendKeys`.
 
 ## Build & Run
 
@@ -38,6 +38,12 @@ Prerequisites: [Rust](https://rustup.rs/) toolchain and [pnpm](https://pnpm.io/)
 ```bash
 cargo build --release
 ./target/release/remote-input
+```
+
+On Windows, run:
+
+```powershell
+.\target\release\remote-input.exe
 ```
 
 The terminal will print the URL and a QR code for your phone to scan. HTTPS is enabled by default with a self-signed certificate.
@@ -67,7 +73,7 @@ The terminal will print the URL and a QR code for your phone to scan. HTTPS is e
 When you hit "Send", the text is written to the system clipboard, then a paste keystroke is simulated at the focused cursor position:
 
 - **Linux**: Direct `/dev/uinput` injection — simulates **Ctrl+Shift+V**, which works in terminals and most GUI applications. Clipboard is set via `wl-copy` (Wayland) or `xclip` (X11). Requires the user to be in the `input` group.
-- **Windows**: `[System.Windows.Forms.SendKeys]::SendWait('^v')` — simulates **Ctrl+V**. Clipboard is set via PowerShell's `Set-Clipboard`.
+- **Windows**: `[System.Windows.Forms.SendKeys]::SendWait('^v')` — simulates **Ctrl+V**. Clipboard text is written through the native Unicode clipboard format.
 
 The `--paste-delay` flag (default 20ms) controls the delay between the clipboard write and the keystroke, giving the system time to register the new clipboard contents. Increase it if text arrives empty or garbled.
 
