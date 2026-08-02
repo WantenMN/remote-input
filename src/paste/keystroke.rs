@@ -77,25 +77,22 @@ pub fn type_text(text: &str) -> Result<(), String> {
     }
 
     let mut inputs: Vec<INPUT> = Vec::with_capacity(text.len() * 2 + 16);
-    let mut pending_newline = false;
+    let mut chars = text.chars().peekable();
 
-    for ch in text.chars() {
+    while let Some(ch) = chars.next() {
         match ch {
-            // Collapse \r\n / \n / \r into a single Enter keypress.
-            '\r' | '\n' => {
-                if !pending_newline {
-                    inputs.extend(tap(VK_RETURN));
+            // \r\n counts as one Enter; standalone \r or \n also one Enter.
+            // Every line break must map to exactly one Enter keypress so
+            // blank lines / multiple newlines are preserved.
+            '\r' => {
+                inputs.extend(tap(VK_RETURN));
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
                 }
-                pending_newline = true;
             }
-            '\t' => {
-                inputs.extend(tap(VK_TAB));
-                pending_newline = false;
-            }
-            '\u{8}' => {
-                inputs.extend(tap(VK_BACK));
-                pending_newline = false;
-            }
+            '\n' => inputs.extend(tap(VK_RETURN)),
+            '\t' => inputs.extend(tap(VK_TAB)),
+            '\u{8}' => inputs.extend(tap(VK_BACK)),
             // Anything else goes in as a raw UTF-16 character, so Chinese,
             // emoji (surrogate pairs), etc. need no IME or keyboard layout.
             ch => {
@@ -106,7 +103,6 @@ pub fn type_text(text: &str) -> Result<(), String> {
                         key_event(0, *unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP),
                     ]);
                 }
-                pending_newline = false;
             }
         }
     }
