@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 const STORAGE_KEY = 'remote-input-history'
 const RECORDING_KEY = 'remote-input-history-recording'
@@ -29,49 +29,45 @@ export function useHistory() {
   const addToHistory = useCallback((text: string) => {
     setItems((prev) => {
       const existing = prev.findIndex((item) => item.text === text)
-      let next: HistoryItem[]
       if (existing >= 0) {
-        next = [...prev]
+        const next = [...prev]
         next[existing] = { ...next[existing], ts: Date.now() }
-      } else {
-        next = [{ id: generateId(), text, ts: Date.now(), pinned: false }, ...prev]
+        return next
       }
-      saveToStorage(next)
-      return next
+      return [{ id: generateId(), text, ts: Date.now(), pinned: false }, ...prev]
     })
   }, [])
 
   const togglePin = useCallback((id: string) => {
-    setItems((prev) => {
-      const next = prev.map((item) =>
+    setItems((prev) =>
+      prev.map((item) =>
         item.id === id ? { ...item, pinned: !item.pinned } : item,
-      )
-      saveToStorage(next)
-      return next
-    })
+      ),
+    )
   }, [])
 
   const deleteItem = useCallback((id: string) => {
-    setItems((prev) => {
-      const next = prev.filter((item) => item.id !== id)
-      saveToStorage(next)
-      return next
-    })
+    setItems((prev) => prev.filter((item) => item.id !== id))
   }, [])
 
   const clearUnpinned = useCallback(() => {
-    setItems((prev) => {
-      const next = prev.filter((item) => item.pinned)
-      saveToStorage(next)
-      return next
-    })
+    setItems((prev) => prev.filter((item) => item.pinned))
   }, [])
 
-  const sortedItems = [...items].sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1
-    if (!a.pinned && b.pinned) return 1
-    return b.ts - a.ts
-  })
+  const sortedItems = useMemo(
+    () =>
+      [...items].sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        return b.ts - a.ts
+      }),
+    [items],
+  )
+
+  // Persist on every change; kept out of the state updaters so updates stay pure.
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+  }, [items])
 
   return {
     items: sortedItems,
@@ -90,8 +86,4 @@ function loadFromStorage(): HistoryItem[] {
   } catch {
     return []
   }
-}
-
-function saveToStorage(items: HistoryItem[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
 }

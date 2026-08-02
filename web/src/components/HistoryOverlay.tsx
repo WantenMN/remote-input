@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Pin, Trash2, ChevronDown, ChevronUp, ArrowLeft, Clock, CircleDot } from 'lucide-react'
 import type { HistoryItem } from '@/hooks/useHistory'
 import { Switch } from '@/components/ui/switch'
@@ -118,6 +119,14 @@ export function HistoryOverlay({
   onClearUnpinned,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  const rowVirtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 140,
+    overscan: 6,
+  })
+
   useEffect(() => {
     if (open && scrollRef.current) scrollRef.current.scrollTop = 0
   }, [open])
@@ -168,27 +177,42 @@ export function HistoryOverlay({
       <div className="relative z-10 h-px bg-white/[0.04] mx-5" />
 
       <div ref={scrollRef} className="relative z-10 flex-1 overflow-y-auto min-h-0 custom-scrollbar">
-        <div className="flex flex-col gap-1.5 p-3">
-          {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-3">
-              <div className="size-12 rounded-full bg-white/[0.03] flex items-center justify-center">
-                <Clock className="size-5 text-muted-foreground/40" />
-              </div>
-              <p className="text-sm text-muted-foreground/60">No history yet</p>
-              <p className="text-xs text-muted-foreground/40">Sent messages will appear here</p>
+        {items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 gap-3">
+            <div className="size-12 rounded-full bg-white/[0.03] flex items-center justify-center">
+              <Clock className="size-5 text-muted-foreground/40" />
             </div>
-          ) : (
-            items.map((item) => (
-              <HistoryItemCard
-                key={item.id}
-                item={item}
-                onSelect={() => onSelect(item.text)}
-                onTogglePin={() => onTogglePin(item.id)}
-                onDelete={() => onDelete(item.id, item.text)}
-              />
-            ))
-          )}
-        </div>
+            <p className="text-sm text-muted-foreground/60">No history yet</p>
+            <p className="text-xs text-muted-foreground/40">Sent messages will appear here</p>
+          </div>
+        ) : (
+          <div
+            className="relative w-full"
+            style={{ height: rowVirtualizer.getTotalSize() }}
+          >
+            {rowVirtualizer.getVirtualItems().map((row) => {
+              const item = items[row.index]
+              return (
+                <div
+                  key={item.id}
+                  data-index={row.index}
+                  ref={rowVirtualizer.measureElement}
+                  className="absolute left-0 right-0 top-0 px-3"
+                  style={{ transform: `translateY(${row.start}px)` }}
+                >
+                  <div className="pb-1.5">
+                    <HistoryItemCard
+                      item={item}
+                      onSelect={() => onSelect(item.text)}
+                      onTogglePin={() => onTogglePin(item.id)}
+                      onDelete={() => onDelete(item.id, item.text)}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="relative z-10 shrink-0 px-4 pb-safe pt-2">
