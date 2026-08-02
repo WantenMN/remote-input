@@ -51,20 +51,79 @@ pub fn paste() -> Result<(), String> {
 }
 
 #[cfg(windows)]
-pub fn paste() -> Result<(), String> {
-    use std::process::Command;
-    let status = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            "Add-Type -AssemblyName System.Windows.Forms; \
-             [System.Windows.Forms.SendKeys]::SendWait('^v')",
-        ])
-        .status()
-        .map_err(|e| format!("Failed to run powershell: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("powershell exited with {status}"))
+pub fn type_text(text: &str) -> Result<(), String> {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput,
+        VK_BACK, VK_RETURN, VK_TAB,
+    };
+
+    fn key_event(vk: u16, scan: u16, flags: u32) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: scan,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
     }
+
+    fn tap(vk: u16) -> [INPUT; 2] {
+        [key_event(vk, 0, 0), key_event(vk, 0, KEYEVENTF_KEYUP)]
+    }
+
+    let mut inputs: Vec<INPUT> = Vec::with_capacity(text.len() * 2 + 16);
+    let mut pending_newline = false;
+
+    for ch in text.chars() {
+        match ch {
+            // Collapse \r\n / \n / \r into a single Enter keypress.
+            '\r' | '\n' => {
+                if !pending_newline {
+                    inputs.extend(tap(VK_RETURN));
+                }
+                pending_newline = true;
+            }
+            '\t' => {
+                inputs.extend(tap(VK_TAB));
+                pending_newline = false;
+            }
+            '\u{8}' => {
+                inputs.extend(tap(VK_BACK));
+                pending_newline = false;
+            }
+            // Anything else goes in as a raw UTF-16 character, so Chinese,
+            // emoji (surrogate pairs), etc. need no IME or keyboard layout.
+            ch => {
+                let mut buf = [0u16; 2];
+                for unit in ch.encode_utf16(&mut buf) {
+                    inputs.extend([
+                        key_event(0, *unit, KEYEVENTF_UNICODE),
+                        key_event(0, *unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP),
+                    ]);
+                }
+                pending_newline = false;
+            }
+        }
+    }
+
+    // Send in batches so very long payloads don't exceed a single call.
+    for batch in inputs.chunks(256) {
+        let sent = unsafe {
+            SendInput(
+                batch.len() as u32,
+                batch.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            )
+        };
+        if sent != batch.len() as u32 {
+            return Err(format!("SendInput failed: {}", std::io::Error::last_os_error()));
+        }
+    }
+
+    Ok(())
 }

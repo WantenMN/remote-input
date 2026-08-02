@@ -10,7 +10,7 @@ pub struct Args {
     #[arg(short, long, default_value_t = 48732)]
     pub port: u16,
 
-    /// Delay in milliseconds between clipboard write and paste simulation
+    /// Delay in milliseconds between clipboard write and paste simulation (Linux only)
     #[arg(short = 'D', long, default_value_t = 20)]
     pub paste_delay: u64,
 

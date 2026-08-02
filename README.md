@@ -29,7 +29,7 @@ sudo usermod -aG input $USER
 
 ### Windows
 
-No extra dependencies needed. Uses the native Windows Unicode clipboard API and PowerShell `SendKeys`.
+No extra dependencies needed. Text is typed directly with the native `SendInput` API in Unicode mode — each UTF-16 character is injected as raw input, so it handles Chinese/emoji without an IME.
 
 ## Build & Run
 
@@ -52,7 +52,7 @@ The terminal will print the URL and a QR code for your phone to scan. HTTPS is e
 
 ```
   -p, --port <PORT>              Listening port [default: 48732]
-  -D, --paste-delay <MS>         Delay between clipboard write and paste (ms) [default: 20]
+  -D, --paste-delay <MS>         Delay between clipboard write and paste (ms, Linux only) [default: 20]
       --http                     Use HTTP instead of HTTPS (insecure, not recommended)
   -m, --max-connections <N>      Maximum number of distinct client IPs allowed at once [default: 1]
   -a, --allow <IP>               Only allow connections from these IPs (comma-separated)
@@ -70,12 +70,12 @@ The terminal will print the URL and a QR code for your phone to scan. HTTPS is e
 
 ## How Text Insertion Works
 
-When you hit "Send", the text is written to the system clipboard, then a paste keystroke is simulated at the focused cursor position:
+When you hit "Send", the text is inserted at the focused cursor position:
 
-- **Linux**: Direct `/dev/uinput` injection — simulates **Ctrl+Shift+V**, which works in terminals and most GUI applications. Clipboard is set via `wl-copy` (Wayland) or `xclip` (X11). Requires the user to be in the `input` group.
-- **Windows**: `[System.Windows.Forms.SendKeys]::SendWait('^v')` — simulates **Ctrl+V**. Clipboard text is written through the native Unicode clipboard format.
+- **Linux**: Writes the text to the system clipboard (`wl-copy`/`xclip`), then simulates **Ctrl+Shift+V** via `/dev/uinput` injection. Works in terminals and most GUI applications. Requires the user to be in the `input` group.
+- **Windows**: Types the text directly with `SendInput` + `KEYEVENTF_UNICODE` — each UTF-16 character is injected as raw input, so it needs no clipboard and no IME. (Terminal/console windows don't receive injected input; use the clipboard instead there.)
 
-The `--paste-delay` flag (default 20ms) controls the delay between the clipboard write and the keystroke, giving the system time to register the new clipboard contents. Increase it if text arrives empty or garbled.
+On Linux, the `--paste-delay` flag (default 20ms) controls the delay between the clipboard write and the keystroke, giving the system time to register the new clipboard contents. Increase it if text arrives empty or garbled. It is ignored on Windows.
 
 ## Network
 
