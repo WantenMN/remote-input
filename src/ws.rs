@@ -62,7 +62,8 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, ip: IpAddr) {
                 if trimmed.is_empty() {
                     continue;
                 }
-                info!("Received {} chars from {ip}, pasting...", trimmed.chars().count());
+                let action = if cfg!(target_os = "windows") { "typing" } else { "pasting" };
+                info!("Received {} chars from {ip}, {action}...", trimmed.chars().count());
 
                 if let Err(e) = state.paste_tx.send(trimmed.to_string()) {
                     error!("Failed to send to paste worker: {e}");
