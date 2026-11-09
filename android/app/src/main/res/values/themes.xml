@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.RemoteInput" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:textColorPrimary">@color/text</item>
+        <item name="android:textColorSecondary">@color/muted</item>
+        <item name="colorPrimary">@color/green</item>
+        <item name="colorPrimaryDark">@color/bg</item>
+        <item name="colorAccent">@color/green</item>
+    </style>
+
+    <style name="DialogDark" parent="Theme.AppCompat.Dialog">
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="android:textColorPrimary">@color/text</item>
+        <item name="android:textColorSecondary">@color/muted</item>
+        <item name="colorAccent">@color/green</item>
+        <item name="android:background">@color/surface</item>
+    </style>
+</resources>

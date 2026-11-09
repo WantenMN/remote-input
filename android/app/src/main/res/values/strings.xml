@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Remote Input</string>
+    <string name="history_title">History</string>
+    <string name="empty_history">No history yet</string>
+    <string name="empty_subtitle">Sent messages will appear here</string>
+    <string name="recording">Recording</string>
+    <string name="paused">Paused</string>
+    <string name="back">Back</string>
+    <string name="scan_qr">Scan QR code</string>
+    <string name="scan_hint">Point at the QR code in the desktop terminal</string>
+    <string name="rescan">Tap to scan again</string>
+    <string name="go">Go</string>
+    <string name="send">Send</string>
+    <string name="history">History</string>
+    <string name="clear_input">Clear input</string>
+    <string name="delete_confirm">Delete this item?</string>
+    <string name="input_hint">Type text to send to the desktop…</string>
+    <string name="clear_unpinned">Clear unpinned</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="confirm">OK</string>
+</resources>

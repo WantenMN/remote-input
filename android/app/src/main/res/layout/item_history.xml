@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="6dp"
+    android:background="@drawable/bg_row"
+    android:gravity="top"
+    android:orientation="horizontal"
+    android:padding="14dp">
+
+    <View
+        android:id="@+id/pin_bar"
+        android:layout_width="3dp"
+        android:layout_height="match_parent"
+        android:layout_marginRight="12dp"
+        android:background="@color/amber"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/history_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:textColor="#E8E8EE"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/meta_icon"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:src="@drawable/ic_history"
+                android:tint="@color/muted" />
+
+            <TextView
+                android:id="@+id/meta_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="4dp"
+                android:textColor="@color/muted"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/card_buttons"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="12dp"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/expand_button"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/btn_ghost"
+            android:contentDescription="Expand"
+            android:padding="9dp"
+            android:src="@drawable/ic_chevron_down"
+            android:tint="@color/muted"
+            android:visibility="gone" />
+
+        <ImageButton
+            android:id="@+id/pin_button"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/btn_ghost"
+            android:contentDescription="Pin"
+            android:padding="9dp"
+            android:src="@drawable/ic_pin"
+            android:tint="@color/muted" />
+
+        <ImageButton
+            android:id="@+id/delete_button"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/btn_ghost"
+            android:contentDescription="@string/delete"
+            android:padding="9dp"
+            android:src="@drawable/ic_trash"
+            android:tint="@color/muted" />
+
+    </LinearLayout>
+
+</LinearLayout>
