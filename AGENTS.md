@@ -9,7 +9,7 @@
 
 ## Test
 
-- `go test ./...` needs no frontend or Node: server tests use `internal/server/testdata/web/` fixtures, never `web-dist/`.
+- `go test ./internal/...` needs no frontend or Node: server tests use `internal/server/testdata/web/` fixtures, never `web-dist/`. (The root package is excluded: it embeds gitignored `web-dist/`, which doesn't exist on a clean runner.)
 - Focused runs: `go test ./internal/<pkg>/` (e.g. `./internal/server/`).
 - Keep `gofmt -l .` clean and run `go vet ./...` before committing.
 

@@ -11,15 +11,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Test
-        run: go test ./...
+        run: go test ./internal/...
 
   build:
     needs: test
@@ -48,9 +48,9 @@ jobs:
     name: build (${{ matrix.target }})
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -63,7 +63,7 @@ jobs:
           pnpm --dir web run build
 
       # Both jobs use the version declared in go.mod (1.27).
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -91,8 +91,42 @@ jobs:
           name: remote-input-${{ matrix.target }}
           path: dist/*.zip
 
+  android:
+    needs: test
+    runs-on: ubuntu-latest
+    name: build (android)
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v3
+
+      - name: Build release APK
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 12
+          max_attempts: 3
+          retry_wait_seconds: 60
+          command: cd android && ./gradlew :app:assembleRelease
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            "dist/remote-input-${GITHUB_REF_NAME}-android.apk"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: remote-input-android
+          path: dist/*.apk
+
   release:
-    needs: build
+    needs: [build, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -107,4 +141,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: artifacts/*.zip
+          files: |
+            artifacts/*.zip
+            artifacts/*.apk

@@ -26,7 +26,7 @@ import (
 	"github.com/WantenMN/remote-input/internal/tlscert"
 )
 
-var version = "0.3.0"
+var version = "0.4.0"
 
 func main() {
 	if err := run(); err != nil {
