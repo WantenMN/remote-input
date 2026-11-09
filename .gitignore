@@ -1,3 +1,6 @@
-/target
+/remote-input
+/remote-input.exe
+/dist
+/remote-input-cert
 /web-dist
 /web/node_modules

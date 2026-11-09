@@ -33,20 +33,25 @@ No extra dependencies needed. Text is typed directly with the native `SendInput`
 
 ## Build & Run
 
-Prerequisites: [Rust](https://rustup.rs/) toolchain and [pnpm](https://pnpm.io/) (for the web frontend build).
+Prerequisites: the [Go](https://go.dev/dl/) toolchain (1.27 or newer) and [pnpm](https://pnpm.io/) (to build the web frontend). No C compiler, no Visual Studio, no system libraries.
 
 ```bash
-cargo build --release
-./target/release/remote-input
+go generate ./...      # builds the Vite bundle into web-dist/
+go build -o remote-input .
+./remote-input
 ```
 
 On Windows, run:
 
 ```powershell
-.\target\release\remote-input.exe
+go generate ./...
+go build -o remote-input.exe .
+.\remote-input.exe
 ```
 
 The terminal will print the URL and a QR code for your phone to scan. HTTPS is enabled by default with a self-signed certificate.
+
+`web-dist/` is generated and not tracked in git. If it is missing, `go build` fails with `pattern all:web-dist: no matching files found` — run `go generate ./...` first.
 
 ## Options
 
@@ -100,6 +105,16 @@ remote-input -a 192.168.1.5,192.168.1.10
 ```
 
 HTTPS is the default mode. Use `--http` only on trusted networks.
+
+## Development
+
+```bash
+go test ./...            # unit and integration tests
+go build -race .         # race-detector build
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o remote-input-linux-arm64 .
+```
+
+Log verbosity can be raised with `LOG_LEVEL=debug`.
 
 ## Links
 
