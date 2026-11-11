@@ -9,3 +9,6 @@
 /android/app/build
 /android/local.properties
 /android/captures
+
+# direnv
+/.direnv/
